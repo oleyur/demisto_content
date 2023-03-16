@@ -1,0 +1,20 @@
+{
+    "name": "Resec",
+    "description": "Resec pack description",
+    "support": "partner",
+    "currentVersion": "1.0.0",
+    "author": "Resec team",
+    "url": "https://resec.test/support",
+    "email": "",
+    "categories": [
+        "Data Enrichment & Threat Intelligence"
+    ],
+    "tags": [],
+    "useCases": [],
+    "keywords": [],
+    "marketplaces": [
+        "xsoar",
+        "marketplacev2"
+    ],
+    "githubUser": []
+}
