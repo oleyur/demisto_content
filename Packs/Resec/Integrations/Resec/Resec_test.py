@@ -1,15 +1,3 @@
-"""Base Integration for Cortex XSOAR - Unit Tests file
-
-Pytest Unit Tests: all funcion names must start with "test_"
-
-More details: https://xsoar.pan.dev/docs/integrations/unit-testing
-
-MAKE SURE YOU REVIEW/REPLACE ALL THE COMMENTS MARKED AS "TODO"
-
-You must add at least a Unit Test function for every XSOAR command
-you are implementing with your integration
-"""
-
 import json
 import io
 
@@ -19,24 +7,28 @@ def util_load_json(path):
         return json.loads(f.read())
 
 
-# TODO: REMOVE the following dummy unit test function
-def test_baseintegration_dummy():
-    """Tests helloworld-say-hello command function.
+def test_get_task_monitor_results_command(requests_mock):
+    from Resec import Client, get_task_monitor_results_command
 
-    Checks the output of the command function with the expected output.
+    mock_response = util_load_json('test_data/get_task_monitor_results.json')
+    requests_mock.get('https://test.com/api/monitor/task-results-by-module?id=1'
+                      + '&module_name=data_breaches&page=1&per-page=1000',
+                      headers={'X-Pagination-Page-Count': '1'},
+                      json=mock_response)
 
-    No mock is needed here because the say_hello_command does not call
-    any external API.
-    """
-    from BaseIntegration import Client, baseintegration_dummy_command
+    client = Client(
+        base_url='https://test.com/api/',
+        verify=False,
+        auth=('some_api_key', ''),
+    )
 
-    client = Client(base_url='some_mock_url', verify=False)
     args = {
-        'dummy': 'this is a dummy response'
+        'monitor_task_id': 1
     }
-    response = baseintegration_dummy_command(client, args)
 
-    mock_response = util_load_json('test_data/baseintegration-dummy.json')
+    command_function = get_task_monitor_results_command('data_breaches')
+    response = command_function(client, args)
 
     assert response.outputs == mock_response
-# TODO: ADD HERE unit tests for every command
+    assert response.outputs_prefix == 'Resec.DataBreach'
+    assert response.outputs_key_field == 'id'

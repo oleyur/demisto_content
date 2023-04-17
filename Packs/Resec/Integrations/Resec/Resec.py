@@ -1,19 +1,3 @@
-"""Base Integration for Cortex XSOAR (aka Demisto)
-
-This is an empty Integration with some basic structure according
-to the code conventions.
-
-MAKE SURE YOU REVIEW/REPLACE ALL THE COMMENTS MARKED AS "TODO"
-
-Developer Documentation: https://xsoar.pan.dev/docs/welcome
-Code Conventions: https://xsoar.pan.dev/docs/integrations/code-conventions
-Linting: https://xsoar.pan.dev/docs/integrations/linting
-
-This is an empty structure file. Check an example at;
-https://github.com/demisto/content/blob/master/Packs/HelloWorld/Integrations/HelloWorld/HelloWorld.py
-
-"""
-
 import demistomock as demisto
 from CommonServerPython import *  # noqa # pylint: disable=unused-wildcard-import
 from CommonServerUserPython import *  # noqa
@@ -27,40 +11,71 @@ urllib3.disable_warnings()
 
 ''' CONSTANTS '''
 
+MAPPING: dict = {
+    "data_breaches": {
+        "date":
+            "uploadTime",
+        "name":
+            "email",
+        "prefix":
+            "Data Breach"
+    }
+}
+
+STATUS_CODE_MSGS = {
+    401: "Bad Credentials",
+    403: "Something is wrong with your account, please, contact Resec.",
+    404: "Not found. There is no such data on server.",
+    500: "There are some troubles on server with your request."
+}
+
 DATE_FORMAT = '%Y-%m-%dT%H:%M:%SZ'  # ISO8601 format with UTC, default in XSOAR
+TIMEOUT = 60.
+RETRIES = 4
+STATUS_LIST_TO_RETRY = [429, 500]
 
 ''' CLIENT CLASS '''
 
 
 class Client(BaseClient):
-    """Client class to interact with the service API
-
-    This Client implements API calls, and does not contain any XSOAR logic.
-    Should only do requests and return data.
-    It inherits from BaseClient defined in CommonServer Python.
-    Most calls use _http_request() that handles proxy, SSL verification, etc.
-    For this  implementation, no special attributes defined
+    """
+    Client class to interact with the service API
     """
 
-    # TODO: REMOVE the following dummy function:
-    def baseintegration_dummy(self, dummy: str) -> Dict[str, str]:
-        """Returns a simple python dict with the information provided
-        in the input (dummy).
-
-        :type dummy: ``str``
-        :param dummy: string to add in the dummy dict that is returned
-
-        :return: dict as {"dummy": dummy}
-        :rtype: ``str``
+    def check_connection(self) -> Dict[str, Any]:
         """
+        Check connection '/monitor/check-connection' API endpoint
+        """
+        return self._http_request(
+            method='GET',
+            url_suffix='/monitor/check-connection',
+        )
 
-        return {"dummy": dummy}
-    # TODO: ADD HERE THE FUNCTIONS TO INTERACT WITH YOUR PRODUCT API
+    def get_task_monitor_results(self, monitor_task_id, module_name: str, page, page_size) -> requests.Response:
+        """
+        Get monitor task results by module '/monitor/task-results-by-module' API endpoint
+        """
+        return self._http_request(
+            method="GET",
+            url_suffix='/monitor/task-results-by-module',
+            resp_type='response',
+            params={
+                'id': monitor_task_id,
+                'module_name': module_name,
+                'page': page,
+                'per-page': page_size
+            },
+            timeout=TIMEOUT, retries=RETRIES, status_list_to_retry=STATUS_LIST_TO_RETRY
+        )
 
 
 ''' HELPER FUNCTIONS '''
 
-# TODO: ADD HERE ANY HELPER FUNCTION YOU MIGHT NEED (if any)
+
+def get_human_readable_output(module_name, monitor_task_id, result):
+    return tableToMarkdown(name="{0} results from task with ID {1}".format(module_name, monitor_task_id),
+                           t=result, removeNull=False, date_fields=['detection_date'])
+
 
 ''' COMMAND FUNCTIONS '''
 
@@ -81,34 +96,59 @@ def test_module(client: Client) -> str:
 
     message: str = ''
     try:
-        # TODO: ADD HERE some code to test connectivity and authentication to your service.
-        # This  should validate all the inputs given in the integration configuration panel,
-        # either manually or by using an API that uses them.
-        message = 'ok'
+        result = client.check_connection()
+        message = result['message']
     except DemistoException as e:
-        if 'Forbidden' in str(e) or 'Authorization' in str(e):  # TODO: make sure you capture authentication errors
+        if 'Forbidden' in str(e) or 'Authorization' in str(e):
             message = 'Authorization Error: make sure API Key is correctly set'
         else:
             raise e
     return message
 
 
-# TODO: REMOVE the following dummy command function
-def baseintegration_dummy_command(client: Client, args: Dict[str, Any]) -> CommandResults:
+def get_task_monitor_results_command(module_name: str):
+    """_summary_
 
-    dummy = args.get('dummy', None)
-    if not dummy:
-        raise ValueError('dummy not specified')
+    Args:
+        module_name (str): _description_
+    """
+    def get_task_monitor_results(client: Client, args: Dict) -> CommandResults:
 
-    # Call the Client function and get the raw response
-    result = client.baseintegration_dummy(dummy)
+        # get params from user
+        monitor_task_id = arg_to_number(args.get("monitor_task_id"), 'monitor_task_id', True)
+        limit = int(args.get("limit", 100000))
+        page = arg_to_number(args.get("page"))
+        page_size = int(args.get("page_size", 1000))
 
-    return CommandResults(
-        outputs_prefix='BaseIntegration',
-        outputs_key_field='',
-        outputs=result,
-    )
-# TODO: ADD additional command functions that translate XSOAR inputs/outputs to Client
+        if page is not None:
+            response = client.get_task_monitor_results(monitor_task_id, module_name, page, page_size)
+            result = response.json()
+        else:
+            page = 1
+            if limit is not None and page_size > limit:
+                page_size = limit
+            result_count = 0
+
+            result = []
+            while result_count < limit:
+                response = client.get_task_monitor_results(monitor_task_id, module_name, page, page_size)
+                result += response.json()
+
+                result_count = len(result)
+                page += 1
+                total_pages = int(response.headers['X-Pagination-Page-Count'])
+                if page > total_pages:
+                    break
+        return CommandResults(
+            outputs_prefix="Resec.{0}".format(MAPPING.get(module_name, {}).get("prefix", "").replace(" ", "")),
+            outputs_key_field="id",
+            outputs=result,
+            readable_output=get_human_readable_output(MAPPING.get(module_name, {}).get("prefix"), monitor_task_id, result),
+            raw_response=result,
+            ignore_auto_extract=True
+        )
+
+    return get_task_monitor_results
 
 
 ''' MAIN FUNCTION '''
@@ -120,12 +160,15 @@ def main() -> None:
     :return:
     :rtype:
     """
+    params = demisto.params()
+    args = demisto.args()
+    command = demisto.command()
 
-    # TODO: make sure you properly handle authentication
-    # api_key = demisto.params().get('credentials', {}).get('password')
+    # get API key
+    api_key = params.get('credentials', {}).get('password')
 
     # get the service API url
-    base_url = urljoin(demisto.params()['url'], '/api/v1')
+    base_url = urljoin(demisto.params()['url'], '/api')
 
     # if your Client class inherits from BaseClient, SSL verification is
     # handled out of the box by it, just pass ``verify_certificate`` to
@@ -139,25 +182,28 @@ def main() -> None:
     demisto.debug(f'Command being called is {demisto.command()}')
     try:
 
-        # TODO: Make sure you add the proper headers for authentication
-        # (i.e. "Authorization": {api key})
+        # Add the proper headers for authentication
         headers: Dict = {}
 
         client = Client(
             base_url=base_url,
             verify=verify_certificate,
+            auth=(api_key, ''),
             headers=headers,
             proxy=proxy)
+
+        commands = {
+            "get-task-monitor-results-data-breaches": get_task_monitor_results_command("data_breaches"),
+            # "get-task-monitor-results-domains": get-task-monitor-results_command("domains"),
+        }
 
         if demisto.command() == 'test-module':
             # This is the call made when pressing the integration Test button.
             result = test_module(client)
             return_results(result)
-
-        # TODO: REMOVE the following dummy command case:
-        elif demisto.command() == 'baseintegration-dummy':
-            return_results(baseintegration_dummy_command(client, demisto.args()))
-        # TODO: ADD command cases for the commands you will implement
+        # command cases implemented
+        else:
+            return_results(commands[command](client, args))
 
     # Log exceptions and return errors
     except Exception as e:

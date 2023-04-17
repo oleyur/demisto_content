@@ -3,7 +3,7 @@ commonfields:
   id: Resec
   version: -1
 configuration:
-- defaultvalue: https://example.com/
+- defaultvalue: https://app.resecurity.com/
   display: Your server URL
   name: url
   required: true
@@ -28,19 +28,64 @@ name: Resec
 script:
   commands:
   - arguments:
-    - default: false
-      description: '[Enter a description of the argument, including any important information users need to know, for example, default values.]'
+    - default: true
+      description: Monitor Task ID.
       isArray: false
-      name: dummy
+      name: monitor_task_id
       required: true
       secret: false
+    - default: false
+      description: Page number. The results will be returned only for specified page if param value is not empty.
+      isArray: false
+      name: page
+      required: false
+      secret: false
+    - default: false
+      description: Page size.
+      isArray: false
+      name: page_size
+      required: false
+      secret: false
+    - default: false
+      description: Limit of records in command result.
+      isArray: false
+      name: limit
+      required: false
+      secret: false
     deprecated: false
-    description: '[Enter a description of the command, including any important information users need to know, for example required permissions.]'
+    description: 'Retrieve monitoring results from specific monitor task'
     execution: false
-    name: baseintegration-dummy
+    name: get-task-monitor-results-data-breaches
     outputs:
-    - contextPath: BaseIntegration.Output
-      description: '[Enter a description of the data returned in this output.]'
+    - contextPath: Resec.DataBreach.id
+      description: 'Data breach ID'
+      type: String
+    - contextPath: Resec.DataBreach.query
+      description: 'The query for which the result was found'
+      type: String
+    - contextPath: Resec.DataBreach.detection_date
+      description: 'Data breach detection date'
+      type: int
+    - contextPath: Resec.DataBreach.email
+      description: 'Data breach email'
+      type: String
+    - contextPath: Resec.DataBreach.username
+      description: 'Data breach username'
+      type: String
+    - contextPath: Resec.DataBreach.password
+      description: 'Data breach password'
+      type: String
+    - contextPath: Resec.DataBreach.password_hash
+      description: 'Data breach password hash'
+      type: String
+    - contextPath: Resec.DataBreach.salt
+      description: 'Data breach salt'
+      type: String
+    - contextPath: Resec.DataBreach.ip
+      description: 'Data breach IP address'
+      type: String
+    - contextPath: Resec.DataBreach.source_name
+      description: 'Data breach source name'
       type: String
   isfetch: false
   runonce: false
